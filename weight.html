@@ -11,7 +11,8 @@
 
 <body>
   <canvas width="480" height="480" id="canvas" style="cursor:pointer;"></canvas>
-  <a href="javascript:void(0)" onclick="gmStart()">开始</a>
+  <a href="javascript:void(0)" onclick="gmStart(own)">先手</a>&emsp;
+  <a href="javascript:void(0)" onclick="gmStart(oth)">后手</a>
   <!-- <table id="table" class="table"></table>
   <a href="javascript:void(0)" onclick="step(1)">1</a>
   <a href="javascript:void(0)" onclick="step(2)">2</a> -->
@@ -50,9 +51,11 @@
       AI: 'ai'
     }
     init();
-    function gmStart() {
+    function gmStart(sign) {
       clearCanvas();
       gaming = true;
+      state.first = sign;
+      state.turn = sign;
       c.addEventListener("mousemove", mousemoveHandle);
       c.addEventListener("mouseup", mouseupHandle);
     }
@@ -90,7 +93,7 @@
           window.localStorage.setItem('loseRecord', JSON.stringify(loseRecord));
           gmOver();
         } else {
-          // changeTurn();
+          changeTurn();
         }
       } catch (e) { }
     }
@@ -120,11 +123,11 @@
       }
     }
     function clearCanvas() {
-      ctx.width = ctx.width;
+      c.height = c.height;
       init();
     }
     function gmOver() {
-      record = [];
+      record.length = 0;
       gaming = false;
       c.removeEventListener('mousemove', mousemoveHandle);
       c.removeEventListener('mouseup', mouseupHandle);
@@ -139,11 +142,6 @@
               c.style.cursor = 'pointer';
             } else {
               c.style.cursor = 'not-allowed';
-              step();
-            }
-          }
-          if (prop == 'first') {
-            if (value == oth) {
               step();
             }
           }
@@ -262,12 +260,12 @@
       }
       arr[setI][setJ] = aiSign;
       record.push({
-        i: i,
-        j: j,
+        i: setI,
+        j: setJ,
         type: recordType.AI,
         weight: recordWeight
-      })
-      coord = getCoordFromIndex(setI, setJ)
+      });
+      coord = getCoordFromIndex(setI, setJ);
       drawPiece(coord.x, coord.y);
       if (checkWin(aiSign)) {
         alert('You lose!')
