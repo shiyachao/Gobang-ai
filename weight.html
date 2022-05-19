@@ -1,0 +1,511 @@
+<html>
+
+<head>
+  <style>
+    .table td {
+      width: 60px;
+      height: 60px;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas width="480" height="480" id="canvas" style="cursor:pointer;"></canvas>
+  <a href="javascript:void(0)" onclick="gmStart()">开始</a>
+  <!-- <table id="table" class="table"></table>
+  <a href="javascript:void(0)" onclick="step(1)">1</a>
+  <a href="javascript:void(0)" onclick="step(2)">2</a> -->
+  <script type="text/javascript">
+    const width = 15;//unit：点位
+    const height = 15;
+    const padding = 30;//unit：px
+    const interval = 30;//unit：px
+    const point = interval - 4;//棋子大小
+    const emp = 0;//空点
+    const own = 1;//自己
+    const oth = 2;//对手
+    const so = 9;//假定当前
+    let state = {
+      turn: own,//当前回合
+      first: own,//先手
+    }
+    state = watchTurn();
+    let gaming = false;
+    let arr;
+    // arr[0][1] = 2;
+    // arr[0][2] = 1;
+    // arr[1][3] = 1;
+    // arr[1][4] = 1;
+    // arr[3][5] = 1;
+    // arr[4][5] = 1;
+    const scan = 5;//扫描范围
+    const boundary = 'A';//边界标识
+    const thresholdVal = 40000;//权值选择阈值
+    const featureCount = 1;//预测轮数
+    let c;
+    let ctx;
+    const record = [];
+    const recordType = {
+      USER: 'user',
+      AI: 'ai'
+    }
+    init();
+    function gmStart() {
+      clearCanvas();
+      gaming = true;
+      c.addEventListener("mousemove", mousemoveHandle);
+      c.addEventListener("mouseup", mouseupHandle);
+    }
+    function mousemoveHandle(e) {
+      if (state.turn != own) return;
+      const { i, j } = getCoordFromMouse(e);
+      try {
+        if (arr[i][j] == emp) {
+          c.style.cursor = 'pointer';
+        } else {
+          c.style.cursor = 'not-allowed'
+        }
+      } catch (e) {
+        c.style.cursor = 'not-allowed'
+      }
+    }
+    function mouseupHandle(e) {
+      if (state.turn != own) return;
+      const { i, j, x, y } = getCoordFromMouse(e);
+      try {
+        if (arr[i][j] != emp) return;
+        arr[i][j] = own;
+        record.push({
+          i: i,
+          j: j,
+          type: recordType.USER,
+        })
+        drawPiece(x, y);
+        if (checkWin(own)) {
+          alert('You win!')
+          //存储ai失败记录
+          let loseRecord = window.localStorage.getItem('loseRecord');
+          loseRecord = loseRecord ? JSON.parse(loseRecord) : [];
+          loseRecord.push(record);
+          window.localStorage.setItem('loseRecord', JSON.stringify(loseRecord));
+          gmOver();
+        } else {
+          // changeTurn();
+        }
+      } catch (e) { }
+    }
+    //初始化
+    function init() {
+      arr = new Array(height).fill(0).map(() => new Array(width).fill(emp));
+      c = document.getElementById("canvas");
+      ctx = c.getContext("2d");
+
+      for (let i = 0; i < width; i++) {
+        const startY = padding;
+        const startX = i * interval + padding;
+        const endY = padding + (height - 1) * interval;
+        const endX = startX;
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
+      for (let i = 0; i < height; i++) {
+        const startY = i * interval + padding;
+        const startX = padding;
+        const endY = startY;
+        const endX = padding + (height - 1) * interval;
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
+    }
+    function clearCanvas() {
+      ctx.width = ctx.width;
+      init();
+    }
+    function gmOver() {
+      record = [];
+      gaming = false;
+      c.removeEventListener('mousemove', mousemoveHandle);
+      c.removeEventListener('mouseup', mouseupHandle);
+    }
+    //turn监听
+    function watchTurn() {
+      return new Proxy(state, {
+        set(obj, prop, value) {
+          Reflect.set(...arguments);
+          if (prop == 'turn') {
+            if (value == own) {
+              c.style.cursor = 'pointer';
+            } else {
+              c.style.cursor = 'not-allowed';
+              step();
+            }
+          }
+          if (prop == 'first') {
+            if (value == oth) {
+              step();
+            }
+          }
+        }
+      })
+    }
+    //获取当前鼠标在canvas上对应坐标和在棋盘上对应坐标
+    function getCoordFromMouse(e) {
+      const pageX = e.pageX;
+      const pageY = e.pageY;
+      const cCoord = c.getBoundingClientRect();
+      const cx = pageX - cCoord.left;
+      const cy = pageY - cCoord.top;
+      //xy坐标和arr中坐标相反 arr中i是上下，j是左右（二维数组规则）
+      const i = parseInt((cy - padding + point / 2) / interval);
+      const j = parseInt((cx - padding + point / 2) / interval);
+      const { x, y } = getCoordFromIndex(i, j);
+      return { i, j, x, y };
+    }
+    //根据棋盘ij获取应该绘制的坐标点
+    function getCoordFromIndex(i, j) {
+      //左上角
+      // const x = j * interval + padding - point / 2;
+      // const y = i * interval + padding - point / 2;
+
+      //圆心
+      const x = j * interval + padding;
+      const y = i * interval + padding;
+      return { x, y };
+    }
+    //绘制棋子
+    function drawPiece(x, y) {
+      ctx.moveTo(x, y);
+      ctx.beginPath();
+      ctx.arc(x, y, point / 2, 0, 2 * Math.PI);
+      if (state.first == state.turn) {
+        ctx.fillStyle = '#000000';
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.stroke();
+      }
+      ctx.fill();
+    }
+    //换回合
+    function changeTurn() {
+      if (state.turn == own) {
+        state.turn = oth;
+      } else {
+        state.turn = own;
+      }
+    }
+    //渲染
+    function arr2table(weightArr) {
+      let html = "";
+      arr.forEach((arrItem, i) => {
+        html += '<tr>';
+        arrItem.forEach((item, j) => {
+          html += '<td>';
+          if (item) {
+            html += `<p>${item}</p>`;
+          }
+          html += `<p style="color:red">${weightArr[i][j]}</p>`
+          html += '</td>'
+        })
+        html += '</tr>';
+      })
+      document.getElementById('table').innerHTML = html;
+    }
+    //AI行动
+    function step(aiSign = oth) {
+      let setI, setJ, recordWeight;
+      let cpArr = JSON.parse(JSON.stringify(arr));
+      if (aiSign == oth) {
+        cpArr = cpArr.map(item => {
+          return item.map(v => {
+            if (v == oth) {
+              v == own;
+            }
+            if (v == own) {
+              v == oth;
+            }
+            return v;
+          })
+        })
+      }
+      const { weight, max, threshold } = getWeightAll(cpArr);
+      let coord;
+      if (threshold.length > 0) {
+        const { i, j, val } = max;
+        setI = i;
+        setJ = j;
+        recordWeight = val;
+      } else if (max.val == 0) {
+        const centerX = parseInt(width / 2);
+        const centerY = parseInt(height / 2);
+        const center = arr[centerX][centerY];
+        if (center == 0) {
+          setI = centerX;
+          setJ = centerY;
+        } else {
+          setI = centerX - 1;
+          setJ = centerY - 1;
+        }
+        recordWeight = 0;
+      } else {
+        //复制棋盘
+        const cpArr = JSON.parse(JSON.stringify(arr));
+        //复制权值棋盘
+        const cpWeight = JSON.parse(JSON.stringify(weight));
+        //推算未来权值（一轮最大权值与当前累加）
+        const { i, j, val } = getFeatureWeight(cpArr, cpWeight);
+        weight[i][j] = val;
+        setI = i;
+        setJ = j;
+        recordWeight = val;
+      }
+      arr[setI][setJ] = aiSign;
+      record.push({
+        i: i,
+        j: j,
+        type: recordType.AI,
+        weight: recordWeight
+      })
+      coord = getCoordFromIndex(setI, setJ)
+      drawPiece(coord.x, coord.y);
+      if (checkWin(aiSign)) {
+        alert('You lose!')
+        gmOver();
+      } else {
+        changeTurn();
+      }
+      // arr2table(weight);
+    }
+    function getWeightAll(arr) {
+      const weight = new Array(height).fill(0).map(() => new Array(width).fill(0));
+      const max = {
+        val: 0,
+        i: 0,
+        j: 0
+      }
+      const threshold = [];
+      for (let i in arr) {
+        for (let j in arr[i]) {
+          i = Number(i);
+          j = Number(j);
+          if (arr[i][j] == emp) {
+            arr[i][j] = so;
+            const weightVal = getWeight(arr, i, j);
+            weight[i][j] = weightVal;
+            if (weightVal > max.val) {
+              max.val = weightVal;
+              max.i = i;
+              max.j = j;
+            }
+            if (weightVal > thresholdVal) {
+              threshold.push({
+                val: weightVal,
+                i: i,
+                j: j
+              })
+            }
+            arr[i][j] = emp;
+          }
+        }
+      }
+      return { weight, max, threshold };
+    }
+
+    function getWeight(v, i, j) {
+      const { top2bottom, topleft2bottomright, left2right, bottomleft2topright } = scanning(v, i, j);
+      const top2bottomWeight = getWeightFromSimpleDir(top2bottom);
+      const topleft2bottomrightWeight = getWeightFromSimpleDir(topleft2bottomright);
+      const left2rightWeight = getWeightFromSimpleDir(left2right);
+      const bottomleft2toprightWeight = getWeightFromSimpleDir(bottomleft2topright);
+      return top2bottomWeight + topleft2bottomrightWeight + left2rightWeight + bottomleft2toprightWeight;
+    }
+    function scanning(v, i, j) {
+      const top2bottomArr = [];
+      const topleft2bottomrightArr = [];
+      const left2rightArr = [];
+      const bottomleft2toprightArr = [];
+      //扫描边际点
+      const topBoundary = i - scan;
+      const leftBoundary = j - scan;
+      const bottomBoundary = i + scan;
+      const rightBoundary = j + scan;
+      //最终确认边界角标
+      const topIndex = topBoundary < 0 ? 0 : topBoundary;
+      const leftIndex = leftBoundary < 0 ? 0 : leftBoundary;
+      const bottomIndex = bottomBoundary > height - 1 ? height - 1 : bottomBoundary;
+      const rightIndex = rightBoundary > width - 1 ? width - 1 : rightBoundary;
+
+      if (topBoundary < 0) top2bottomArr.push(boundary);
+      for (let ii = topIndex; ii <= bottomIndex; ii++) {
+        top2bottomArr.push(v[ii][j]);
+      }
+      if (bottomBoundary > height - 1) top2bottomArr.push(boundary);
+
+      if (topBoundary < 0 || leftBoundary < 0) topleft2bottomrightArr.push(boundary);
+      let topStart, leftStart;
+      if (topBoundary < 0 || leftBoundary < 0) {
+        //检索区域左上空间不足，重新确定起始点
+        for (let ii = i, jj = j; ii >= 0 && jj >= 0; ii--, jj--) {
+          if (ii == 0 || jj == 0) {
+            topStart = ii;
+            leftStart = jj;
+            break;
+          }
+        }
+      } else {
+        topStart = topIndex;
+        leftStart = leftIndex;
+      }
+      for (
+        let ii = topStart, jj = leftStart;
+        ii <= bottomIndex && jj <= rightIndex;
+        ii++, jj++
+      ) {
+        topleft2bottomrightArr.push(v[ii][jj]);
+      }
+      if (bottomBoundary > height - 1 || rightBoundary > width - 1) topleft2bottomrightArr.push(boundary);
+
+      if (leftBoundary < 0) left2rightArr.push(boundary);
+      for (let jj = leftIndex; jj <= rightIndex; jj++) {
+        left2rightArr.push(v[i][jj]);
+      }
+      if (rightBoundary > width - 1) left2rightArr.push(boundary);
+
+      if (bottomBoundary > height - 1 || leftBoundary < 0) bottomleft2toprightArr.push(boundary);
+      let bottomStart, leftStart2;
+      if (bottomBoundary > height - 1 || leftBoundary < 0) {
+        //检索区域左下空间不足，重新确定起始点
+        for (let ii = i, jj = j; ii <= bottomIndex && jj >= 0; ii++, jj--) {
+          if (ii == bottomIndex || jj == 0) {
+            bottomStart = ii;
+            leftStart2 = jj;
+            break;
+          }
+        }
+      } else {
+        bottomStart = bottomIndex;
+        leftStart2 = leftIndex;
+      }
+      for (
+        let ii = bottomStart, jj = leftStart2;
+        ii >= topIndex && jj <= rightIndex;
+        ii--, jj++
+      ) {
+        bottomleft2toprightArr.push(v[ii][jj]);
+      }
+      if (topBoundary < 0 || rightBoundary > width - 1) bottomleft2toprightArr.push(boundary);
+
+      const top2bottom = top2bottomArr.join('');
+      const topleft2bottomright = topleft2bottomrightArr.join('');
+      const left2right = left2rightArr.join('');
+      const bottomleft2topright = bottomleft2toprightArr.join('');
+      return { top2bottom, topleft2bottomright, left2right, bottomleft2topright };
+    }
+    function getWeightFromSimpleDir(dirVal) {
+      const weightArr = [
+        //我方五连
+        { value: ['91111', '19111', '11911', '11191', '11119'], weight: 50100 },
+        //对方五连
+        { value: ['92222', '29222', '22922', '22292', '22229'], weight: 50010 },
+        //我方获胜-四连
+        { value: ['091110', '019110', '011910', '011190'], weight: 40100 },
+        //对方获胜-四连
+        { value: ['092220', '029220', '022920', '022290'], weight: 40010 },
+        //我方单侧被封堵或单侧边际-四连(下一步可五连)
+        {
+          value: [
+            '291110', '219110', '211910', '211190',
+            '091112', '019112', '011912', '011192',
+            'A91110', 'A19110', 'A11910', 'A11190',
+            '09111A', '01911A', '01191A', '01119A',
+          ], weight: 10001
+        },
+        //我方单侧被封堵或单侧边际-四连(不连续)(下一步可五连)
+        {
+          value: [
+            '291101', '219101', '211901', '211109', '291011', '219011', '211091', '211019', '290111', '210911', '210191', '210119',
+            '901112', '109112', '101912', '101192', '910112', '190112', '110912', '110192', '901112', '109112', '101912', '101192',
+            'A91101', 'A19101', 'A11901', 'A11109', 'A91011', 'A19011', 'A11091', 'A11019', 'A90111', 'A10911', 'A10191', 'A10119',
+            '90111A', '10911A', '10191A', '10119A', '91011A', '19011A', '11091A', '11019A', '90111A', '10911A', '10191A', '10119A',
+          ], weight: 10000
+        },
+        //我方无封堵三连
+        { value: ['09110', '01910', '01190'], weight: 10001 },
+        //我方无封堵三连(不连续)
+        {
+          value: [
+            '090110', '010910', '010190',
+            '011090', '091010', '019010',
+          ], weight: 10000
+        },
+        //我方无封堵二连
+        { value: ['0910', '0190'], weight: 4000 },
+      ];
+      const matchItem = weightArr.find(item => {
+        return item.value.some(val => {
+          return dirVal.indexOf(val) != -1;
+        })
+      })
+      return matchItem ? matchItem.weight : 0;
+    }
+    function getFeatureWeight(cpArr, cpWeight, fCount) {
+      let weightResult = [];
+      //遍历权值棋盘，对4000以上权值点位假定下子并进行下一轮推算
+      for (let wi in cpWeight) {
+        for (let wj in cpWeight[wi]) {
+          if (cpWeight[wi][wj] >= 4000 && cpArr[wi][wj] == emp) {
+            cpArr[wi][wj] = own;
+            const { max, weight, threshold } = getWeightAll(cpArr);
+            //是否下一轮预测
+            let count = fCount ? fCount : featureCount;
+            const featureResult = {
+              val: 0
+            }
+            if (count > 1) {
+              const cpArr2 = JSON.parse(JSON.stringify(cpArr));
+              const cpWeight2 = JSON.parse(JSON.stringify(weight));
+              count--;
+              featureResult.val = getFeatureWeight(cpArr2, cpWeight2, count).val;
+            }
+            let val = threshold.length > 1 ? threshold.reduce((total, item) => total + item.val, 0) : max.val;
+            //权值累加
+            weightResult.push({
+              val: val + cpWeight[wi][wj] + featureResult.val,
+              i: wi,
+              j: wj
+            });
+            cpArr[wi][wj] = emp;
+          }
+        }
+      }
+      weightResult = weightResult.sort((prev, next) => prev.val - next.val).reverse();
+      let max;
+      if (weightResult.length > 0) {
+        max = weightResult[0];
+      }
+      return max;
+    }
+    function checkWin(sign) {
+      const signArr = new Array(5).fill(sign);
+      const winSign = signArr.join("");
+      for (let i in arr) {
+        for (let j in arr) {
+          i = Number(i);
+          j = Number(j);
+          const { top2bottom, topleft2bottomright, left2right, bottomleft2topright } = scanning(arr, i, j);
+          const t2b = top2bottom.indexOf(winSign) != -1;
+          const tl2br = topleft2bottomright.indexOf(winSign) != -1;
+          const l2r = left2right.indexOf(winSign) != -1;
+          const bl2tr = bottomleft2topright.indexOf(winSign) != -1;
+          if (t2b || tl2br || l2r || bl2tr) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+  </script>
+</body>
+
+</html>
