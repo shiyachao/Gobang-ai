@@ -340,9 +340,9 @@
       }
       if (bottomBoundary > height - 1) top2bottomArr.push(boundary);
 
-      if (topBoundary < 0 || leftBoundary < 0) topleft2bottomrightArr.push(boundary);
       let topStart, leftStart;
       if (topBoundary < 0 || leftBoundary < 0) {
+        topleft2bottomrightArr.push(boundary);
         //检索区域左上空间不足，重新确定起始点
         for (let ii = i, jj = j; ii >= 0 && jj >= 0; ii--, jj--) {
           if (ii == 0 || jj == 0) {
@@ -370,9 +370,9 @@
       }
       if (rightBoundary > width - 1) left2rightArr.push(boundary);
 
-      if (bottomBoundary > height - 1 || leftBoundary < 0) bottomleft2toprightArr.push(boundary);
       let bottomStart, leftStart2;
       if (bottomBoundary > height - 1 || leftBoundary < 0) {
+        bottomleft2toprightArr.push(boundary);
         //检索区域左下空间不足，重新确定起始点
         for (let ii = i, jj = j; ii <= bottomIndex && jj >= 0; ii++, jj--) {
           if (ii == bottomIndex || jj == 0) {
